@@ -50,10 +50,10 @@
             ExcelWriterFactory.GetProvider(stream, v, sheetName, excelType, configuration, false).Insert();
         }
 
-        public static void InsertSheet(string path, object value, string sheetName, bool printHeader = true, ExcelType excelType = ExcelType.UNKNOWN, bool overwriteSheet = false)
+        public static void InsertSheet(string path, object value, string sheetName, bool printHeader = true, ExcelType excelType = ExcelType.UNKNOWN, IConfiguration configuration = null, bool overwriteSheet = false)
         {
             if (Path.GetExtension(path).ToLowerInvariant() == ".xlsm")
-                throw new NotSupportedException("MiniExcel SaveAs not support xlsm");
+                throw new NotSupportedException("MiniExcel InsertSheet not support xlsm");
 
             if (!File.Exists(path))
             {
@@ -62,19 +62,14 @@
             else
             {
                 using (var stream = new FileStream(path, FileMode.Open))
-                    InsertSheet(stream, value, sheetName, printHeader, ExcelTypeHelper.GetExcelType(path, excelType), overwriteSheet);
+                    InsertSheet(stream, value, sheetName, printHeader, ExcelTypeHelper.GetExcelType(path, excelType), configuration, overwriteSheet);
             }
         }
 
-        public static void InsertSheet(this Stream stream, object value, string sheetName, bool printHeader = true, ExcelType excelType = ExcelType.XLSX, bool overwriteSheet = false)
+        public static void InsertSheet(this Stream stream, object value, string sheetName, bool printHeader = true, ExcelType excelType = ExcelType.XLSX, IConfiguration configuration = null, bool overwriteSheet = false)
         {
-            var configuration = new OpenXmlConfiguration
-            {
-                FreezeRowCount = 0,
-                AutoFilter = false,
-                FastMode = true,
-                TableStyles = TableStyles.None
-            };
+            configuration = configuration as OpenXmlConfiguration ?? OpenXmlConfiguration.DefaultConfig;
+            ((OpenXmlConfiguration)configuration).FastMode = true;
             ExcelWriterFactory.GetProvider(stream, value, sheetName, excelType, configuration, printHeader).InsertSheet(overwriteSheet);
         }
 
