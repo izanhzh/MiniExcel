@@ -45,6 +45,69 @@ namespace MiniExcelLibs.OpenXml
         {
         }
 
+        public void InsertSheet(bool overwriteSheet)
+        {
+            _archive.Entries.SingleOrDefault(s => s.FullName == ExcelFileNames.Styles)?.Delete();
+            GenerateStylesXml();//TODO: Style调整为非固定的，支持动态增加单元格样式，这样InsertSheet就不会覆盖掉其他Sheet的样式
+
+            var sheetRecords = new ExcelOpenXmlSheetReader(_stream, _configuration).GetWorkbookRels(_archive.Entries).ToArray();
+            foreach (var sheetRecord in sheetRecords.OrderBy(o => o.Id))
+            {
+                _sheets.Add(new SheetDto { Name = sheetRecord.Name, SheetIdx = (int)sheetRecord.Id, State = sheetRecord.State });
+            }
+            var existSheetDto = _sheets.SingleOrDefault(s => s.Name == _defaultSheetName);
+            if (existSheetDto == null)
+            {
+                currentSheetIndex = (int)sheetRecords.Max(m => m.Id) + 1;
+                var insertSheetInfo = GetSheetInfos(_defaultSheetName);
+                var insertSheetDto = insertSheetInfo.ToDto(currentSheetIndex);
+                _sheets.Add(insertSheetDto);
+                CreateSheetXml(_value, insertSheetDto.Path);
+            }
+            else if (overwriteSheet)
+            {
+                _archive.Entries.Single(s => s.FullName == existSheetDto.Path).Delete();
+                currentSheetIndex = existSheetDto.SheetIdx;
+                CreateSheetXml(_value, existSheetDto.Path);
+            }
+            else
+            {
+                throw new Exception($"Sheet “{_defaultSheetName}” already exist");
+            }
+
+            AddFilesToZip();
+
+            GenerateDrawinRelXml(currentSheetIndex);
+
+            GenerateDrawingXml(currentSheetIndex);
+
+            GenerateWorkBookXmls(out StringBuilder workbookXml, out StringBuilder workbookRelsXml, out Dictionary<int, string> sheetsRelsXml);
+
+            foreach (var sheetRelsXml in sheetsRelsXml)
+            {
+                var sheetRelsXmlPath = ExcelFileNames.SheetRels(sheetRelsXml.Key);
+                _archive.Entries.SingleOrDefault(s => s.FullName == sheetRelsXmlPath)?.Delete();
+                CreateZipEntry(
+                    sheetRelsXmlPath,
+                    null,
+                    ExcelXml.DefaultSheetRelXml.Replace("{{format}}", sheetRelsXml.Value));
+            }
+
+            _archive.Entries.SingleOrDefault(s => s.FullName == ExcelFileNames.Workbook)?.Delete();
+            CreateZipEntry(
+                ExcelFileNames.Workbook,
+                ExcelContentTypes.Workbook,
+                ExcelXml.DefaultWorkbookXml.Replace("{{sheets}}", workbookXml.ToString()));
+
+            _archive.Entries.SingleOrDefault(s => s.FullName == ExcelFileNames.WorkbookRels)?.Delete();
+            CreateZipEntry(
+                ExcelFileNames.WorkbookRels,
+                null,
+                ExcelXml.DefaultWorkbookXmlRels.Replace("{{sheets}}", workbookRelsXml.ToString()));
+
+            _archive.Dispose();
+        }
+
         public void SaveAs()
         {
             GenerateDefaultOpenXml();
@@ -337,7 +400,7 @@ namespace MiniExcelLibs.OpenXml
                 var prop = GetColumnInfosFromDynamicConfiguration(columnName);
                 props.Add(prop);
             }
-            
+
             //sheet view
             WriteSheetViews(writer);
 
@@ -398,7 +461,8 @@ namespace MiniExcelLibs.OpenXml
             writer.Write(WorksheetXml.EndCols);
         }
 
-        private void WriteSheetViews(MiniExcelStreamWriter writer) {
+        private void WriteSheetViews(MiniExcelStreamWriter writer)
+        {
             // exit early if no style to write
             if (_configuration.FreezeRowCount <= 0 && _configuration.FreezeColumnCount <= 0)
             {
@@ -417,7 +481,8 @@ namespace MiniExcelLibs.OpenXml
             writer.Write(WorksheetXml.EndSheetViews);
         }
 
-        private void WritePanes(MiniExcelStreamWriter writer) {
+        private void WritePanes(MiniExcelStreamWriter writer)
+        {
 
             string activePane;
             if (_configuration.FreezeColumnCount > 0 && _configuration.FreezeRowCount > 0)
@@ -432,7 +497,7 @@ namespace MiniExcelLibs.OpenXml
             {
                 activePane = "bottomLeft";
             }
-            writer.Write( WorksheetXml.StartPane(
+            writer.Write(WorksheetXml.StartPane(
                 xSplit: _configuration.FreezeColumnCount > 0 ? _configuration.FreezeColumnCount : (int?)null,
                 ySplit: _configuration.FreezeRowCount > 0 ? _configuration.FreezeRowCount : (int?)null,
                 topLeftCell: ExcelOpenXmlUtils.ConvertXyToCell(
@@ -441,7 +506,7 @@ namespace MiniExcelLibs.OpenXml
                 ),
                 activePane: activePane,
                 state: "frozen"
-            ) );
+            ));
 
             // write pane selections
             if (_configuration.FreezeColumnCount > 0 && _configuration.FreezeRowCount > 0)
@@ -452,16 +517,16 @@ namespace MiniExcelLibs.OpenXml
                  <selection pane="bottomLeft" activeCell="A3" sqref="A3"/>
                  <selection pane="bottomRight" activeCell="B3" sqref="B3"/>
                  */
-                var cellTR = ExcelOpenXmlUtils.ConvertXyToCell(_configuration.FreezeColumnCount+1, 1);
+                var cellTR = ExcelOpenXmlUtils.ConvertXyToCell(_configuration.FreezeColumnCount + 1, 1);
                 writer.Write(WorksheetXml.PaneSelection("topRight", cellTR, cellTR));
 
-                var cellBL = ExcelOpenXmlUtils.ConvertXyToCell(1, _configuration.FreezeRowCount+1);
+                var cellBL = ExcelOpenXmlUtils.ConvertXyToCell(1, _configuration.FreezeRowCount + 1);
                 writer.Write(WorksheetXml.PaneSelection("bottomLeft", cellBL, cellBL));
 
-                var cellBR = ExcelOpenXmlUtils.ConvertXyToCell(_configuration.FreezeColumnCount+1, _configuration.FreezeRowCount+1);
+                var cellBR = ExcelOpenXmlUtils.ConvertXyToCell(_configuration.FreezeColumnCount + 1, _configuration.FreezeRowCount + 1);
                 writer.Write(WorksheetXml.PaneSelection("bottomRight", cellBR, cellBR));
             }
-            else if ( _configuration.FreezeColumnCount > 0 )
+            else if (_configuration.FreezeColumnCount > 0)
             {
                 // freeze column
                 /*
@@ -610,25 +675,35 @@ namespace MiniExcelLibs.OpenXml
         {
             for (int sheetIndex = 0; sheetIndex < _sheets.Count; sheetIndex++)
             {
-                var drawing = GetDrawingRelationshipXml(sheetIndex);
-                CreateZipEntry(
-                    ExcelFileNames.DrawingRels(sheetIndex),
-                    null,
-                    ExcelXml.DefaultDrawingXmlRels.Replace("{{format}}", drawing));
+                GenerateDrawinRelXml(sheetIndex);
             }
+        }
+
+        private void GenerateDrawinRelXml(int sheetIndex)
+        {
+            var drawing = GetDrawingRelationshipXml(sheetIndex);
+            CreateZipEntry(
+                ExcelFileNames.DrawingRels(sheetIndex),
+                null,
+                ExcelXml.DefaultDrawingXmlRels.Replace("{{format}}", drawing));
         }
 
         private void GenerateDrawingXml()
         {
             for (int sheetIndex = 0; sheetIndex < _sheets.Count; sheetIndex++)
             {
-                var drawing = GetDrawingXml(sheetIndex);
-
-                CreateZipEntry(
-                    ExcelFileNames.Drawing(sheetIndex),
-                    ExcelContentTypes.Drawing,
-                    ExcelXml.DefaultDrawing.Replace("{{format}}", drawing));
+                GenerateDrawingXml(sheetIndex);
             }
+        }
+
+        private void GenerateDrawingXml(int sheetIndex)
+        {
+            var drawing = GetDrawingXml(sheetIndex);
+
+            CreateZipEntry(
+                ExcelFileNames.Drawing(sheetIndex),
+                ExcelContentTypes.Drawing,
+                ExcelXml.DefaultDrawing.Replace("{{format}}", drawing));
         }
 
         /// <summary>

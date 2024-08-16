@@ -135,6 +135,11 @@ namespace MiniExcelLibs.Csv
             SaveAs();
         }
 
+        public void InsertSheet(bool overwriteSheet)
+        {
+            throw new NotImplementedException();
+        }
+
         public async Task SaveAsAsync(CancellationToken cancellationToken = default(CancellationToken))
         {
             await Task.Run(() => SaveAs(), cancellationToken).ConfigureAwait(false);

@@ -8,5 +8,6 @@ namespace MiniExcelLibs
         void SaveAs();
         Task SaveAsAsync(CancellationToken cancellationToken = default(CancellationToken));
         void Insert();
+        void InsertSheet(bool overwriteSheet);
     }
 }
