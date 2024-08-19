@@ -46,6 +46,7 @@
                 else
                     v = value;
             }
+
             stream.Seek(0, SeekOrigin.End);
             ExcelWriterFactory.GetProvider(stream, v, sheetName, excelType, configuration, false).Insert();
         }
