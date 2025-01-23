@@ -10,7 +10,7 @@
     using System.Linq;
     using System.Reflection;
 
-    internal class ExcelColumnInfo
+    public class ExcelColumnInfo
     {
         public object Key { get; set; }
         public int? ExcelColumnIndex { get; set; }

@@ -13,7 +13,7 @@ namespace MiniExcelLibs.WriteAdapter
         IEnumerable<IEnumerable<CellWriteInfo>> GetRows(List<ExcelColumnInfo> props, CancellationToken cancellationToken = default);
     }
 
-    internal readonly struct CellWriteInfo
+    public readonly struct CellWriteInfo
     {
         public CellWriteInfo(object value, int cellIndex, ExcelColumnInfo prop)
         {
